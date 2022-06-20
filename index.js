@@ -1,5 +1,6 @@
 const http = require('http');
 const app = require('express')();
+const port = 9090;
 
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/index.html');
@@ -12,7 +13,6 @@ app.listen(9091, () => {
 const webSocketServer = require('websocket').server;
 
 const httpServer = http.createServer();
-const port = 9090;
 httpServer.listen(port, () => {
   console.log(`Server listening on port ${port}`);
 });
