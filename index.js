@@ -6,7 +6,8 @@ app.get('/', (req, res) => {
   res.sendFile(__dirname + '/index.html');
 });
 
-app.listen(9091, () => {
+const appPort = process.env.PORT || 9091;
+app.listen(appPort, () => {
   console.log('Server started at port 9091');
 });
 
