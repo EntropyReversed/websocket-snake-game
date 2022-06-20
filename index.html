@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+
+<body>
+  <button id="btnCreate">New Game</button>
+  <button id="btnJoin">Join Game</button>
+  <input type="text" id="txtGameId" placeholder="Enter game ID">
+  <div id="divPlayers" style="position: absolute; display: flex;"></div>
+  <div id="divBoard"></div>
+
+  <script>
+    let clientId = null;
+    let gameId = null;
+    let playerColor = null
+    let player = null
+    let ws = new WebSocket('ws://localhost:9090');
+    const btnCreate = document.getElementById('btnCreate');
+    const btnJoin = document.getElementById('btnJoin');
+    const textGameId = document.getElementById('txtGameId');
+    const divPlayers = document.getElementById('divPlayers');
+    const divBoard = document.getElementById('divBoard');
+    let playersData = [];
+    let playersDataObj = {};
+
+    let mousePos = {
+      x: 0,
+      y: 0
+    }
+
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    canvas.width = window.innerWidth * 0.7;
+    canvas.height = window.innerHeight * 0.7;
+    canvas.style.boxShadow = 'inset 0 0 10px #000';
+    canvas.style.marginTop = '24px'
+    divBoard.appendChild(canvas);
+
+    function isOpen(ws) { return ws.readyState === ws.OPEN }
+
+    btnCreate.addEventListener('click', () => {
+      const payload = {
+        "method": "create",
+        "clientId": clientId
+      };
+
+      if (!isOpen(ws)) return;
+      ws.send(JSON.stringify(payload));
+    });
+
+    btnJoin.addEventListener('click', () => {
+      if (gameId === null) {
+        gameId = textGameId.value;
+      }
+
+      const payload = {
+        "method": "join",
+        "clientId": clientId,
+        "gameId": gameId
+      };
+
+      if (!isOpen(ws)) return;
+      ws.send(JSON.stringify(payload));
+    });
+
+    ws.onmessage = message => {
+      const response = JSON.parse(message.data);
+      if (response.method === 'connect') {
+        clientId = response.clientId
+        console.log("client id is set successfully " + clientId);
+      }
+
+      if (response.method === 'create') {
+        gameId = response.game.id
+        console.log("game successfully created with id " + gameId);
+        navigator.clipboard.writeText(gameId).then(function () {
+          console.log("game id is copied to clipboard");
+        }, function () {
+          console.log("clipboard write failed");
+        });
+      }
+
+      if (response.method === 'update' && response.game?.state) {
+        const game = response.game
+        playersData = []
+        game.clients.forEach(client => {
+          // playersDataObj[client.player] = {
+          //   color: client.color,
+          //   x: game.state[client.player].x,
+          //   y: game.state[client.player].y
+          // }
+
+          playersData.push({
+            color: client.color,
+            x: game.state[client.player].x,
+            y: game.state[client.player].y
+          })
+        })
+      }
+
+      if (response.method === 'join' || response.payload?.method === 'join') {
+        game = response.payload.game;
+        while (divPlayers.firstChild) {
+          divPlayers.removeChild(divPlayers.firstChild);
+        }
+        game.clients.forEach(c => {
+          const divPlayer = document.createElement('div');
+          divPlayer.style.width = "200px";
+          divPlayer.style.background = c.color;
+          divPlayer.textContent = `Player ${c.player + 1}`;
+          divPlayers.appendChild(divPlayer);
+          if (c.clientId === clientId) {
+            playerColor = c.color
+            player = c.player
+          }
+        })
+
+        canvas.addEventListener('mousemove', e => {
+          mousePos.x = e.clientX;
+          mousePos.y = e.clientY;
+          const payload = {
+            "method": "play",
+            "gameId": gameId,
+            "player": player,
+            "x": mousePos.x,
+            "y": mousePos.y,
+          }
+          ws.send(JSON.stringify(payload));
+        })
+
+        let stop = false;
+        let frameCount = 0;
+        let fps, fpsInterval, startTime, now, then, elapsed;
+
+        const startAnimating = (fps) => {
+          fpsInterval = 1000 / fps;
+          then = Date.now();
+          startTime = then;
+          animate();
+        }
+
+        // let shrinkTimer = 0
+
+        const animate = (a) => {
+          requestAnimationFrame(animate);
+          now = Date.now();
+          elapsed = now - then;
+          if (elapsed > fpsInterval) {
+            then = now - (elapsed % fpsInterval);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // console.log(playersDataObj)
+            // for (const data in playersDataObj) {
+            //   // console.log(`${data}: ${playersDataObj[data]}`);
+            //   ctx.fillStyle = playersDataObj[data].color
+            //   ctx.beginPath()
+            //   if (+data === player) {
+            //     ctx.arc(mousePos.x - canvas.offsetLeft, mousePos.y - canvas.offsetTop, 10, 0, Math.PI * 2)
+            //   } else {
+            //     ctx.arc(playersDataObj[data].x - canvas.offsetLeft, playersDataObj[data].y - canvas.offsetTop, 10, 0, Math.PI * 2)
+            //   }
+            //   ctx.fill()
+            // }
+
+
+            playersData.forEach((p, pKey) => {
+              ctx.fillStyle = p.color
+              ctx.beginPath()
+              if (pKey === player) {
+                ctx.arc(mousePos.x - canvas.offsetLeft, mousePos.y - canvas.offsetTop, 10, 0, Math.PI * 2)
+              } else {
+                ctx.arc(p.x - canvas.offsetLeft, p.y - canvas.offsetTop, 10, 0, Math.PI * 2)
+              }
+              ctx.fill()
+            })
+            // segSystem.display()
+
+            // if (shrinkTimer % 100 === 0) {
+            //   segSystem.removeSegment()
+            // }
+            // shrinkTimer += 2;
+          }
+
+        }
+
+        startAnimating(60)
+      }
+    }
+  </script>
+
+  <!-- <script src="/clientSide.js"></script> -->
+</body>
+
+</html>

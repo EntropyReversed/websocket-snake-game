@@ -1,0 +1,18 @@
+{
+  "name": "websocket-test",
+  "version": "1.0.0",
+  "description": "Inverse Kinematics Multiplayer Snake Game",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.18.1",
+    "nodemon": "^2.0.16",
+    "websocket": "^1.0.34"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "nodemon index.js"
+  },
+  "author": "",
+  "license": "ISC"
+}
