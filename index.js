@@ -1,22 +1,15 @@
+const path = require('path');
 const http = require('http');
-const app = require('express')();
-const port = 9090;
+const socketio = require('socket.io');
+const express = require('express');
+const port = 3000;
 
-app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/index.html');
-});
+const app = express();
+const server = http.createServer(app);
+const io = socketio(server);
 
-const appPort = process.env.PORT || 9091;
-app.listen(appPort, () => {
-  console.log('Server started at port 9091');
-});
-
-const webSocketServer = require('websocket').server;
-
-const httpServer = http.createServer();
-httpServer.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
-});
+// Set static folder
+app.use(express.static(path.join(__dirname, 'public')));
 
 //hashmap of all connected clients
 const clients = {};
@@ -25,129 +18,104 @@ const maxPlayers = 2;
 const playersColors = ['red', 'green', 'blue', 'yellow', 'orange', 'purple'];
 const dataTickRate = 60;
 
-const wsServer = new webSocketServer({
-  httpServer: httpServer,
-});
-
-wsServer.on('request', (request) => {
-  const connection = request.accept(null, request.origin);
-
-  connection.on('open', () => {
-    console.log('Connection opened');
-  });
-  connection.on('close', () => {
-    console.log('Connection closed');
-  });
-
-  connection.on('message', (message) => {
-    const result = JSON.parse(message.utf8Data);
-
-    if (result.method === 'create') {
-      const clientId = result.clientId;
-      const gameId = guid();
-      games[gameId] = {
-        id: gameId,
-        positions: {},
-        clients: [],
-        winner: null,
-        finished: false,
-        started: false,
-        startedAt: null,
-        finishedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-
-      const payload = {
-        method: 'create',
-        game: games[gameId],
-      };
-
-      const con = clients[clientId].connection;
-      con.send(JSON.stringify(payload));
-    }
-
-    if (result.method === 'join' || result.payload?.method === 'join') {
-      const gameId = result.gameId;
-      const game = games[gameId];
-      const clientId = result.clientId;
-
-      if (game.clients.length >= maxPlayers) {
-        return;
-      }
-      const color = playersColors[game.clients.length];
-      game.clients.push({
-        clientId: clientId,
-        color: color,
-        player: game.clients.length,
-      });
-
-      // if (game.clients.length === maxPlayers || game.payload?.clients.length === maxPlayers) {
-      //   updateGameState();
-      // }
-      updateGameState();
-
-      const payload = {
-        method: 'join',
-        game: game,
-      };
-      game.clients.forEach((c) => {
-        clients[c.clientId].connection.send(
-          JSON.stringify({
-            payload,
-          })
-        );
-      });
-    }
-
-    if (result.method === 'play') {
-      const gameId = result.gameId;
-      const x = result.x;
-      const y = result.y;
-
-      let state = games[gameId].state;
-      if (!state) {
-        state = {};
-        for (let i = 0; i < maxPlayers; i++) {
-          state[i] = {
-            x: 0,
-            y: 0,
-          };
-        }
-      }
-
-      state[result.player].x = x;
-      state[result.player].y = y;
-      games[gameId].state = state;
-    }
-  });
-
-  //generate new client id
+io.on('connect', (socket) => {
   const clientId = guid();
   console.log(`Client ${clientId} connected`);
-  clients[clientId] = {
-    connection: connection,
-  };
 
   const payload = {
-    method: 'connect',
     clientId: clientId,
     message: 'Welcome to the game',
   };
 
-  connection.send(JSON.stringify(payload));
+  socket.emit('init', payload);
+
+  socket.on('create', (result) => {
+    console.log('create: ', result);
+    const gameId = guid();
+    games[gameId] = {
+      id: gameId,
+      positions: {},
+      clients: [],
+      winner: null,
+      finished: false,
+      started: false,
+      startedAt: null,
+      finishedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const payload = {
+      game: games[gameId],
+    };
+
+    socket.emit('create', payload);
+  });
+
+  socket.on('join', (result) => {
+    console.log('join: ', result);
+    const gameId = result.gameId;
+    const game = games[gameId];
+    const clientId = result.clientId;
+
+    if (game.clients.length >= maxPlayers) {
+      return;
+    }
+    const color = playersColors[game.clients.length];
+    game.clients.push({
+      clientId: clientId,
+      color: color,
+      player: game.clients.length,
+    });
+
+    // if (game.clients.length === maxPlayers || game.payload?.clients.length === maxPlayers) {
+    //   updateGameState();
+    // }
+    updateGameState();
+
+    const payload = {
+      game: game,
+    };
+
+    socket.emit('join', payload);
+  });
+
+  socket.on('play', (result) => {
+    const gameId = result.gameId;
+    const x = result.x;
+    const y = result.y;
+
+    let state = games[gameId].state;
+    if (!state) {
+      state = {};
+      for (let i = 0; i < maxPlayers; i++) {
+        state[i] = {
+          x: 0,
+          y: 0,
+        };
+      }
+    }
+
+    state[result.player].x = x;
+    state[result.player].y = y;
+    games[gameId].state = state;
+    console.log('play: ', result);
+  });
+
+  // Runs when client disconnects
+  socket.on('disconnect', () => {
+    console.log('disconnected');
+  });
 });
 
 const updateGameState = () => {
   for (const g of Object.keys(games)) {
     const game = games[g];
     const payload = {
-      method: 'update',
       game: game,
     };
-    game.clients.forEach((c) => {
-      clients[c.clientId].connection.send(JSON.stringify(payload));
-    });
+
+    io.emit('update', payload);
   }
 
   setTimeout(updateGameState, 1000 / dataTickRate);
@@ -173,3 +141,6 @@ const guid = () => {
     S4()
   );
 };
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
