@@ -32,10 +32,17 @@ io.on('connect', (socket) => {
   socket.on('create', (result) => {
     console.log('create: ', result);
     const gameId = guid();
+    const stateObj = {};
+    for (let i = 0; i < maxPlayers; i++) {
+      stateObj[i] = {
+        x: 0,
+        y: 0,
+      };
+    }
     games[gameId] = {
       id: gameId,
-      positions: {},
       clients: [],
+      state: stateObj,
       winner: null,
       finished: false,
       started: false,
@@ -84,22 +91,11 @@ io.on('connect', (socket) => {
     const gameId = result.gameId;
     const x = result.x;
     const y = result.y;
-
-    let state = games[gameId].state;
-    if (!state) {
-      state = {};
-      for (let i = 0; i < maxPlayers; i++) {
-        state[i] = {
-          x: 0,
-          y: 0,
-        };
-      }
-    }
+    const state = games[gameId].state;
 
     state[result.player].x = x;
     state[result.player].y = y;
     games[gameId].state = state;
-    console.log('play: ', result);
   });
 
   // Runs when client disconnects
